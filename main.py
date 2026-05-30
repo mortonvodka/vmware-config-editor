@@ -1,4 +1,4 @@
-import sys
+import sys, os
 from PyQt5.QtWidgets import (
     QMainWindow, QApplication, QLineEdit, QPushButton,
     QHBoxLayout, QVBoxLayout, QWidget, QFileDialog, QTableWidget,
@@ -45,17 +45,27 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("VMX Editor")
         self.setFixedSize(QSize(700, 500))
         self.vmx = None
+        self.path = None
 
+        # Top bar
         self.folderInput = QLineEdit()
         self.folderInput.setPlaceholderText("Path to .vmx file...")
         self.folderInput.setReadOnly(True)
         self.browseFolderBtn = QPushButton("Browse")
         self.browseFolderBtn.clicked.connect(self.browse)
+        self.refreshFolderBtn = QPushButton("Refresh")
+        self.refreshFolderBtn.clicked.connect(self.refresh)
+
+        self.searchInput = QLineEdit()
+        self.searchInput.setPlaceholderText("Search keys...")
+        self.searchInput.textChanged.connect(self.filter_rows)
 
         topBar = QHBoxLayout()
         topBar.addWidget(self.folderInput)
         topBar.addWidget(self.browseFolderBtn)
+        topBar.addWidget(self.refreshFolderBtn)
 
+        # Table
         self.table = QTableWidget(0, 2)
         self.table.setHorizontalHeaderLabels(["Key", "Value"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -63,6 +73,7 @@ class MainWindow(QMainWindow):
         self.table.setEditTriggers(QTableWidget.DoubleClicked)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
 
+        # Bottom bar
         self.addBtn = QPushButton("Add Row")
         self.addBtn.setEnabled(False)
         self.addBtn.clicked.connect(self.add_row)
@@ -71,6 +82,9 @@ class MainWindow(QMainWindow):
         self.removeBtn.setEnabled(False)
         self.removeBtn.clicked.connect(self.remove_row)
 
+        self.helpBtn = QPushButton("Help")
+        self.helpBtn.clicked.connect(self.open_help)
+
         self.saveBtn = QPushButton("Save")
         self.saveBtn.setEnabled(False)
         self.saveBtn.clicked.connect(self.save)
@@ -78,11 +92,13 @@ class MainWindow(QMainWindow):
         bottomBar = QHBoxLayout()
         bottomBar.addWidget(self.addBtn)
         bottomBar.addWidget(self.removeBtn)
+        bottomBar.addWidget(self.helpBtn)
         bottomBar.addStretch()
         bottomBar.addWidget(self.saveBtn)
 
         mainLayout = QVBoxLayout()
         mainLayout.addLayout(topBar)
+        mainLayout.addWidget(self.searchInput)
         mainLayout.addWidget(self.table)
         mainLayout.addLayout(bottomBar)
 
@@ -91,10 +107,19 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(centralWidget)
 
     def browse(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Open VMX File", "", "VMX Files (*.vmx)")
-        if path:
-            self.folderInput.setText(path)
-            self.vmx = VMX(path)
+        self.path, _ = QFileDialog.getOpenFileName(self, "Open VMX File", "", "VMX Files (*.vmx)")
+        if self.path:
+            self.folderInput.setText(self.path)
+            self.vmx = VMX(self.path)
+            self.populate_table()
+            self.saveBtn.setEnabled(True)
+            self.addBtn.setEnabled(True)
+            self.removeBtn.setEnabled(True)
+
+    def refresh(self):
+        if self.path:
+            self.folderInput.setText(self.path)
+            self.vmx = VMX(self.path)
             self.populate_table()
             self.saveBtn.setEnabled(True)
             self.addBtn.setEnabled(True)
@@ -121,19 +146,30 @@ class MainWindow(QMainWindow):
         if not selected:
             QMessageBox.warning(self, "No selection", "Select a row to remove.")
             return
-        row = self.table.currentRow()
-        key_item = self.table.item(row, 0)
-        if key_item:
-            self.vmx.delete(key_item.text())
-        self.table.removeRow(row)
+        self.table.removeRow(self.table.currentRow())
 
     def save(self):
+        self.vmx.config.clear()
         for row in range(self.table.rowCount()):
-            key = self.table.item(row, 0).text()
+            key = self.table.item(row, 0).text().strip()
             value = self.table.item(row, 1).text()
-            self.vmx.set(key, value)
+            if key:
+                self.vmx.set(key, value)
         self.vmx.save()
         QMessageBox.information(self, "Saved", f"Saved {len(self.vmx.config)} keys to file.")
+    
+    def open_help(self):
+        os.system("start https://gist.github.com/denji/4dc6d508550014582814ba2ed692b77f#23-vmci-interface")
+
+    def filter_rows(self, text):
+        for row in range(self.table.rowCount()):
+            key_item = self.table.item(row, 0)
+            value_item = self.table.item(row, 1)
+            match = (
+                text.lower() in key_item.text().lower() or
+                text.lower() in value_item.text().lower()
+            ) if key_item and value_item else False
+            self.table.setRowHidden(row, not match if text else False)
 
 
 if __name__ == "__main__":
